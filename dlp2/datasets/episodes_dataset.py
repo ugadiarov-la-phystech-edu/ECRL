@@ -47,7 +47,7 @@ class EpisodesDataset(Dataset):
 
             get_num = lambda x: int(osp.splitext(osp.basename(x))[0])
             paths.sort(key=get_num)
-            self.episode_images.append(paths[:actual_length])
+            self.episode_images.append(paths)
             self.index2episode.extend([len(self.episode_images) - 1] * actual_length)
             self.episode2offset.append(self.episode2offset[-1] + actual_length)
 
