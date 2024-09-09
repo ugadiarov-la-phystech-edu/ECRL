@@ -381,11 +381,12 @@ def train_dlp(ds, data_root_dir, batch_size=16, lr=2e-4, image_size=64, device=t
             torch.save(model.state_dict(),
                        os.path.join(save_dir, f'{ds}_dlp{run_prefix}.pth'))
             print(f'validation step...')
-            valid_loss = evaluate_validation_elbo(model, ds, data_root_dir, epoch, batch_size=batch_size,
+            valid_loss = evaluate_validation_elbo(model, ds, data_root_dir, epoch, image_size=image_size,
+                                                  use_correlation_heatmaps=use_correlation_heatmaps,batch_size=batch_size,
                                                   recon_loss_type=recon_loss_type, device=device,
                                                   save_image=True, fig_dir=fig_dir, topk=topk,
                                                   recon_loss_func=recon_loss_func, beta_rec=beta_rec,
-                                                  beta_kl=beta_kl, kl_balance=kl_balance)
+                                                  beta_kl=beta_kl, kl_balance=kl_balance,)
             log_str = f'validation loss: {valid_loss:.3f}\n'
             print(log_str)
             log_line(log_dir, log_str)

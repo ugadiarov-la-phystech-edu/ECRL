@@ -10,6 +10,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 import torchvision.utils as vutils
 
+from dlp2.datasets.episodes_dataset import EpisodesDataset
 # datasets
 from dlp2.datasets.panda_ds import PandaPush
 # util functions
@@ -18,15 +19,17 @@ from dlp2.utils.util_func import plot_keypoints_on_image_batch, \
     plot_bb_on_image_batch_from_z_scale_nms, plot_bb_on_image_batch_from_masks_nms, plot_glimpse_obj_on
 
 
-def evaluate_validation_elbo(model, ds, data_root_dir, epoch, batch_size=100, recon_loss_type="vgg", device=torch.device('cpu'),
+def evaluate_validation_elbo(model, ds, data_root_dir, epoch, image_size, use_correlation_heatmaps, batch_size=100, recon_loss_type="vgg", device=torch.device('cpu'),
                              save_image=False, fig_dir='./', topk=5, recon_loss_func=None, beta_rec=1.0, beta_kl=1.0,
                              kl_balance=1.0, accelerator=None, model_type='object', iou_thresh=0.2, ):
     model.eval()
     kp_range = model.kp_range
     # load data
     if ds == "panda_push":
-        image_size = 128
         dataset = PandaPush(data_root_dir, mode='valid', res=image_size)
+    elif ds == "episodes_dataset":
+        dataset = EpisodesDataset(data_root_dir, mode='train', sample_length=int(use_correlation_heatmaps) + 1,
+                                  res=image_size)
     else:
         raise NotImplementedError
 
@@ -39,13 +42,14 @@ def evaluate_validation_elbo(model, ds, data_root_dir, epoch, batch_size=100, re
 
     elbos = []
     for batch in dataloader:
-        if ds == 'panda_push':
-            x = batch[0].squeeze(1).to(device)
-            x_prior = x
-        else:
-            x = batch
-            x_prior = x
-        batch_size = x.shape[0]
+        x = batch[0].to(device)
+        if len(x.shape) == 5 and not use_correlation_heatmaps:
+            # [bs, T, ch, h, w]
+            x = x.view(-1, *x.shape[2:])
+        elif len(x.shape) == 4 and use_correlation_heatmaps:
+            # [bs, ch, h, w]
+            x = x.unsqueeze(1)
+        x_prior = x
         # forward pass
         with torch.no_grad():
             model_output = model(x, x_prior=x_prior)
@@ -78,6 +82,9 @@ def evaluate_validation_elbo(model, ds, data_root_dir, epoch, batch_size=100, re
                                      recon_loss_func=recon_loss_func)
         loss = all_losses['loss']
 
+        if use_correlation_heatmaps:
+            x = x.view(-1, *x.shape[2:])
+            x_prior = x_prior.view(-1, *x_prior.shape[2:])
         # for plotting, confidence calculation
         mu_tot = z_base + mu_offset
         logvar_tot = logvar_offset
