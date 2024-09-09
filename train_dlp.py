@@ -186,12 +186,14 @@ def train_dlp(ds, data_root_dir, batch_size=16, lr=2e-4, image_size=64, device=t
         batch_psnrs = []
         pbar = tqdm(iterable=dataloader)
         for batch in pbar:
-            if ds == 'panda_push':
-                x = batch[0].squeeze(1).to(device)
-                x_prior = x
-            else:
-                x = batch.to(device)
-                x_prior = x
+            x = batch[0].to(device)
+            if len(x.shape) == 5 and not use_correlation_heatmaps:
+                # [bs, T, ch, h, w]
+                x = x.view(-1, *x.shape[2:])
+            elif len(x.shape) == 4 and use_correlation_heatmaps:
+                # [bs, ch, h, w]
+                x = x.unsqueeze(1)
+            x_prior = x
             batch_size = x.shape[0]
             # forward pass
             noisy = (epoch < (warmup_epoch + 1))  # add small noise to the alpha masks
@@ -260,6 +262,9 @@ def train_dlp(ds, data_root_dir, batch_size=16, lr=2e-4, image_size=64, device=t
 
             pbar.set_postfix(loss=loss.data.cpu().item(), rec=loss_rec.data.cpu().item(),
                              kl=loss_kl.data.cpu().item(), on_l1=obj_on_l1.cpu().item())
+            if use_correlation_heatmaps:
+                x = x.view(-1, *x.shape[2:])
+                x_prior = x_prior.view(-1, *x_prior.shape[2:])
             # break  # for testing
         pbar.close()
         losses.append(np.mean(batch_losses))
