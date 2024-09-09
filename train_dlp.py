@@ -132,7 +132,7 @@ def train_dlp(ds, data_root_dir, batch_size=16, lr=2e-4, image_size=64, device=t
     # prior logvars
     # prepare saving location
     run_name = f'{ds}_dlp' + run_prefix
-    log_dir = prepare_logdir(runname=run_name, src_dir='dlp2/')
+    log_dir = prepare_logdir(runname=run_name, src_dir='log/dlp2/')
     fig_dir = os.path.join(log_dir, 'figures')
     save_dir = os.path.join(log_dir, 'saves')
     save_config(log_dir, hparams)
