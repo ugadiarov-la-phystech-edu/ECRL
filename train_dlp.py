@@ -10,6 +10,8 @@ Default hyper-parameters
 | shapes  | object (object)      |        8 |          15 | mse           |    0.1  |      0.001 |          8 |     0.25 |                   5 |
 +---------+--------------------------------+----------+-------------+---------------+---------+------------+------------+----------+---------------------+
 """
+import argparse
+
 # imports
 import numpy as np
 import os
@@ -24,6 +26,8 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 import torchvision.utils as vutils
 import torch.optim as optim
+
+from dlp2.datasets.episodes_dataset import EpisodesDataset
 # modules
 from dlp2.models import ObjectDLP
 # datasets
@@ -41,7 +45,7 @@ torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
 
 
-def train_dlp(ds, data_root_dir, batch_size=16, lr=2e-4, device=torch.device("cpu"), kp_activation="tanh",
+def train_dlp(ds, data_root_dir, batch_size=16, lr=2e-4, image_size=64, device=torch.device("cpu"), kp_activation="tanh",
               pad_mode='replicate', num_epochs=250, load_model=False, n_kp=8, recon_loss_type="mse",
               sigma=1.0, beta_kl=1.0, beta_rec=1.0, dropout=0.0,
               patch_size=16, topk=15, n_kp_enc=20, eval_epoch_freq=5,
@@ -83,13 +87,15 @@ def train_dlp(ds, data_root_dir, batch_size=16, lr=2e-4, device=torch.device("cp
     """
 
     # load data
+    ch = 3
+    enc_channels = [32, 64, 128]
+    prior_channels = (16, 32, 64)
+    milestones = (20, 40, 80)
     if ds == "panda_push":
-        image_size = 128
-        ch = 3
-        enc_channels = [32, 64, 128]
-        prior_channels = (16, 32, 64)
         dataset = PandaPush(data_root_dir, mode='train', res=image_size)
-        milestones = (20, 40, 80)
+    elif ds == "episodes_dataset":
+        dataset = EpisodesDataset(data_root_dir, mode='train', sample_length=int(use_correlation_heatmaps) + 1,
+                                  res=image_size)
     else:
         raise NotImplementedError
 
@@ -440,9 +446,19 @@ def train_dlp(ds, data_root_dir, batch_size=16, lr=2e-4, device=torch.device("cp
     return model
 
 
-if __name__ == "__main__":
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config_path', type=str, required=True)
+    parser.add_argument('--use_correlation_heatmaps', action=argparse.BooleanOptionalAction)
+    args = parser.parse_args()
 
-    config = yaml.safe_load(Path('config/TrainDLPConfig.yaml').read_text())
+    return args
+
+
+if __name__ == "__main__":
+    args = parse_args()
+
+    config = yaml.safe_load(Path(args.config_path).read_text())
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -461,4 +477,5 @@ if __name__ == "__main__":
                       bg_learned_feature_dim=config['bg_learned_feature_dim'],
                       recon_loss_type=config['recon_loss_type'], topk=config['topk'],
                       anchor_s=config['anchor_s'], scale_std=config['scale_std'], offset_std=config['offset_std'],
-                      eval_epoch_freq=config['eval_epoch_freq'], eval_im_metrics=config['eval_im_metrics'])
+                      eval_epoch_freq=config['eval_epoch_freq'], eval_im_metrics=config['eval_im_metrics'],
+                      use_correlation_heatmaps=args.use_correlation_heatmaps)
