@@ -1048,7 +1048,7 @@ class ObjectDLP(nn.Module):
         z_base = model_output['z_base']
         mu_offset = model_output['mu_offset']
         logvar_offset = model_output['logvar_offset']
-        rec_x = model_output['rec']
+        rec_x = model_output['rec'].reshape_as(x)
         mu_features = model_output['mu_features']
         logvar_features = model_output['logvar_features']
         z_features = model_output['z_features']

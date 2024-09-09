@@ -11,6 +11,7 @@ Default hyper-parameters
 +---------+--------------------------------+----------+-------------+---------------+---------+------------+------------+----------+---------------------+
 """
 import argparse
+import math
 
 # imports
 import numpy as np
@@ -166,10 +167,10 @@ def train_dlp(ds, data_root_dir, batch_size=16, lr=2e-4, image_size=64, device=t
     if eval_im_metrics:
         val_lpipss = []
         best_val_lpips_epoch = 0
-        val_lpips = best_val_lpips = 1e8
+        val_lpips = best_val_lpips = math.inf
 
     # initialize validation statistics
-    valid_loss = best_valid_loss = 1e8
+    valid_loss = best_valid_loss = math.inf
     valid_losses = []
     best_valid_epoch = 0
 
