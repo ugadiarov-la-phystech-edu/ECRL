@@ -449,7 +449,7 @@ def train_dlp(ds, data_root_dir, batch_size=16, lr=2e-4, image_size=64, device=t
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config_path', type=str, required=True)
-    parser.add_argument('--use_correlation_heatmaps', action=argparse.BooleanOptionalAction)
+    parser.add_argument('--use_correlation_heatmaps', action='store_true')
     args = parser.parse_args()
 
     return args
