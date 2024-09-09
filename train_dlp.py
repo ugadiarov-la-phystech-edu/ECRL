@@ -460,6 +460,7 @@ if __name__ == "__main__":
 
     config = yaml.safe_load(Path(args.config_path).read_text())
 
+    torch.set_float32_matmul_precision('medium')
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     run_prefix = f"_{config['n_kp_enc']}kp_{config['n_kp_prior']}kpp_{config['learned_feature_dim']}zdim"
