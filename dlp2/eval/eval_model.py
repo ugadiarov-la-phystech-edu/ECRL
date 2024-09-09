@@ -28,7 +28,7 @@ def evaluate_validation_elbo(model, ds, data_root_dir, epoch, image_size, use_co
     if ds == "panda_push":
         dataset = PandaPush(data_root_dir, mode='valid', res=image_size)
     elif ds == "episodes_dataset":
-        dataset = EpisodesDataset(data_root_dir, mode='train', sample_length=int(use_correlation_heatmaps) + 1,
+        dataset = EpisodesDataset(data_root_dir, mode='valid', sample_length=int(use_correlation_heatmaps) + 1,
                                   res=image_size)
     else:
         raise NotImplementedError
