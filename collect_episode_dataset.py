@@ -31,7 +31,7 @@ def parser_args():
     parser.add_argument('--epsilon_initial', type=float, required=True)
     parser.add_argument('--action_noise_sigma_initial', type=float, required=True)
     parser.add_argument('--num_workers', type=int, default=2)
-    parser.add_argument('--seed', type=int, default=0)
+    parser.add_argument('--seed', type=int, default=1)
     parser.add_argument('--max_episode_length', type=int, required=True)
     parser.add_argument('--num_objects', type=int, required=True)
 

@@ -745,7 +745,7 @@ class TD3HER(OffPolicyAlgorithm):
                 policy_actions, _ = self.predict(input_obs)
                 scaled_actions = self.policy.scale_action(policy_actions)
                 uniform_random_noise = np.array([self.action_space.sample() for _ in range(self.env.num_envs)])
-                scaled_actions = np.where(np.random.rand(self.env.num_envs) < epsilon, uniform_random_noise, scaled_actions)
+                scaled_actions = np.where(np.random.rand(self.env.num_envs, 1) < epsilon, uniform_random_noise, scaled_actions)
                 scaled_actions = np.clip(scaled_actions + action_noise(), -1, 1)
                 actions = self.policy.unscale_action(scaled_actions)
                 batch_episode_actions.append(actions)
