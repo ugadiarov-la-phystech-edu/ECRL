@@ -222,6 +222,7 @@ class TD3HER(OffPolicyAlgorithm):
                 print(f"\nFinished warmup episodes")
             print(f"\n#### Episode {self._episode_num + 1} - Start ####")
             episode_start_time = time.time()
+            start_steps = self.num_timesteps
 
             # reset environment for new episode
             self._last_obs = self.env.reset()
@@ -284,12 +285,14 @@ class TD3HER(OffPolicyAlgorithm):
                 print(f"Saving model to {self.model_save_dir}")
                 self.save(self.model_save_dir)
 
+            fps = (self.num_timesteps - start_steps) / (time.time() - episode_start_time)
             # wandb log and commit
             if self.wandb_log:
                 wandb.log({"obs_rms_mean": np.mean(self.rms_normalizer.rms.mean)}, commit=False)
                 wandb.log({"obs_rms_std": np.mean(np.sqrt(self.rms_normalizer.rms.var))}, commit=False)
                 wandb.log({"exp_epsilon": self.epsilon}, commit=False)
                 wandb.log({"action_noise": self.an_sigma}, commit=False)
+                wandb.log({"fps": fps}, commit=False)
                 wandb.log({"env_timesteps": self.num_timesteps}, commit=True)
 
         callback.on_training_end()
