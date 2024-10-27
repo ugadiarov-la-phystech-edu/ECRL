@@ -678,6 +678,162 @@ class TD3HER(OffPolicyAlgorithm):
         }
         return eval_stat_dict
 
+    def collect_dataset(self, store_episode_callback, num_episodes=100, stat_save_path=None, epsilon_initial=0,
+                        epsilon_final=0, action_noise_sigma_initial=0, action_noise_sigma_final=0):
+        self.policy.set_training_mode(False)
+        max_batch_step = num_episodes // self.env.num_envs
+        num_episodes = max_batch_step * self.env.num_envs
+        # if training on random number of cubes, evaluate only on max number of cubes
+        random_obj_num = self.env.env.random_obj_num
+        self.env.env.random_obj_num = False
+        # prepare stats variables
+        total_returns = 0
+        total_latent_rep_returns = 0
+        total_avg_obj_dist = 0
+        total_max_obj_dist = 0
+        total_goal_success_frac = 0
+        total_goals_reached = 0
+        if stat_save_path is not None:
+            save_stat_dict = {
+                "success": [],
+                "success_frac": [],
+                "avg_obj_dist": [],
+                "max_obj_dist": [],
+                "avg_return": [],
+            }
+        ori_dist_list = []
+        action_len = self.action_space.shape[-1]
+
+        print(f"\nCollecting data on {num_episodes} random goals...")
+        start_time = time.time()
+
+        def interpolate(value_initial, value_final, batch_step):
+            return value_initial + (value_final - value_initial) * batch_step / (max_batch_step - 1)
+
+        for i in tqdm(range(max_batch_step)):
+            epsilon = interpolate(epsilon_initial, epsilon_final, i)
+            action_noise = NormalActionNoise(mean=np.zeros((self.env.num_envs, action_len)),
+                                             sigma=np.ones((self.env.num_envs, action_len)) * interpolate(
+                                                 action_noise_sigma_initial, action_noise_sigma_final, i))
+            # prepare rollout stats variables
+            ret = np.zeros(self.env.num_envs)
+            latent_rep_ret = np.zeros(self.env.num_envs)
+            avg_obj_dist = np.ones(self.env.num_envs)
+            max_obj_dist = np.ones(self.env.num_envs)
+            goal_success_frac = np.zeros(self.env.num_envs)
+            goals_reached = np.zeros(self.env.num_envs)
+            batch_episode_actions = []
+            batch_episode_images = [[] for _ in range(self.env.num_envs)]
+            # perform rollout
+            self._last_obs = self.env.reset()
+            for t in range(self.eval_max_episode_length):
+                if self.env.smorl and t % self.smorl_meta_n_steps == 0 and t > 0:
+                    if self.obs_mode == 'state':
+                        self.smorl_update_env_goal_state()
+                    else:
+                        self.smorl_update_env_goal()
+                # normalize observation
+                input_obs = {
+                    # "observation": self._last_obs["observation"],  # commented to accelerate code
+                    "desired_goal": self.rms_normalizer.normalize(self._last_obs["desired_goal"]),
+                    "achieved_goal": self.rms_normalizer.normalize(self._last_obs["achieved_goal"])
+                }
+                # sample action or select it according to policy
+                policy_actions, _ = self.predict(input_obs)
+                scaled_actions = self.policy.scale_action(policy_actions)
+                uniform_random_noise = np.array([self.action_space.sample() for _ in range(self.env.num_envs)])
+                scaled_actions = np.where(np.random.rand(self.env.num_envs) < epsilon, uniform_random_noise, scaled_actions)
+                scaled_actions = np.clip(scaled_actions + action_noise(), -1, 1)
+                actions = self.policy.unscale_action(scaled_actions)
+                batch_episode_actions.append(actions)
+
+                # perform action
+                new_obs, rewards, dones, infos = self.env.step(actions)
+                # gather stats
+                ret += rewards
+                avg_obj_dist = np.array([infos[i]["avg_obj_dist"] for i in range(len(infos))])
+                max_obj_dist = np.array([infos[i]["max_obj_dist"] for i in range(len(infos))])
+                goal_success_frac = np.array([infos[i]["goal_success_frac"] for i in range(len(infos))])
+                if self.reward_model is not None:
+                    # calculate Chamfer reward
+                    with torch.no_grad():
+                        obs = {"achieved_goal": self.rms_normalizer.normalize(torch.tensor(new_obs["achieved_goal"], device=self.device)),
+                               "desired_goal": self.rms_normalizer.normalize(torch.tensor(new_obs["desired_goal"], device=self.device))}
+                        chamfer_rewards = self.reward_model(obs)
+                        latent_rep_ret += chamfer_rewards.cpu().numpy().squeeze()
+                # save episode media and goals
+                for info, episode_images in zip(infos, batch_episode_images):
+                    episode_images.append(np.moveaxis(info["image"][0], source=0, destination=-1))
+
+                if i == 0:
+                    if t == self.eval_max_episode_length - 1:
+                        if goal_success_frac[0] == 1:
+                            eval_vid_success = True
+                            print("Visualized eval episode was a success")
+                        else:
+                            eval_vid_success = False
+                            print("Visualized eval episode was a failure")
+                # save orientation distances
+                if self.env.push_t and t == self.eval_max_episode_length - 1:
+                    ori_dist_list.extend(np.array([infos[i]["ori_dist"] for i in range(len(infos))]))
+                # update last_obs
+                self._last_obs = new_obs
+
+            # [env_id, timestep, action_dim]
+            batch_episode_actions = np.stack(batch_episode_actions, axis=1)
+            # store episode
+            for episode_images, episode_actions in zip(batch_episode_images, batch_episode_actions):
+                store_episode_callback(episode_images, episode_actions[1:])
+
+            total_returns += np.sum(ret)
+            total_latent_rep_returns += np.sum(latent_rep_ret)
+            total_avg_obj_dist += np.sum(avg_obj_dist)
+            total_max_obj_dist += np.sum(max_obj_dist)
+            total_goal_success_frac += np.sum(goal_success_frac)
+            goals_reached[goal_success_frac == 1] = 1
+            total_goals_reached += np.sum(goals_reached)
+            if stat_save_path is not None:
+                save_stat_dict["success"].extend(goals_reached)
+                save_stat_dict["success_frac"].extend(goal_success_frac)
+                save_stat_dict["max_obj_dist"].extend(max_obj_dist)
+                save_stat_dict["avg_obj_dist"].extend(avg_obj_dist)
+                save_stat_dict["avg_return"].extend(ret / self.eval_max_episode_length)
+
+        print(f"Evaluation completed in {time.time() - start_time:5.2f}s")
+        # revert 'random_obj_num' attribute to original value
+        self.env.env.random_obj_num = random_obj_num
+
+        if stat_save_path is not None:
+            with open(stat_save_path, 'wb') as file:
+                pickle.dump(save_stat_dict, file)
+            print(f"Saved eval stats to {stat_save_path}\n")
+
+        # compute overall stats
+        mean_return = total_returns / num_episodes
+        mean_latent_rep_return = total_latent_rep_returns / num_episodes
+        mean_avg_obj_dist = total_avg_obj_dist / num_episodes
+        mean_max_obj_dist = total_max_obj_dist / num_episodes
+        mean_success_frac = total_goal_success_frac / num_episodes
+        succes_rate = (total_goals_reached / num_episodes) * 100
+
+        print(f"Goal success rate: {succes_rate / 100:3.3f}%")
+        print(f"Goal success fraction: {mean_success_frac:3.3f}")
+        print(f"Max object-goal distance: {mean_max_obj_dist:3.3f}")
+        print(f"Avg. object-goal distance: {mean_avg_obj_dist:3.3f}")
+        print(f"Avg. reward: {mean_return / self.eval_max_episode_length:3.3f}")
+
+        eval_stat_dict = {
+            "succes_rate": succes_rate,
+            "mean_success_frac": mean_success_frac,
+            "mean_avg_obj_dist": mean_avg_obj_dist,
+            "mean_max_obj_dist": mean_max_obj_dist,
+            "mean_return": mean_return,
+            "mean_latent_rep_return": mean_latent_rep_return,
+            "eval_vid_success": eval_vid_success,
+            "ori_dist_array": np.concatenate(ori_dist_list) if self.env.push_t else None,
+        }
+        return eval_stat_dict
+
     def _get_episode_stats(self):
         num_episodes = int(self.train_freq[0] / self.horizon) if self.n_envs > 1 else self.train_freq[0]
 
