@@ -29,7 +29,9 @@ def parser_args():
     parser.add_argument('--num_val_episodes', type=int, required=True)
     parser.add_argument('--checkpoint_path', type=str, required=True)
     parser.add_argument('--epsilon_initial', type=float, required=True)
+    parser.add_argument('--epsilon_final', type=float, default=0)
     parser.add_argument('--action_noise_sigma_initial', type=float, required=True)
+    parser.add_argument('--action_noise_sigma_final', type=float, default=0)
     parser.add_argument('--num_workers', type=int, default=2)
     parser.add_argument('--seed', type=int, default=1)
     parser.add_argument('--max_episode_length', type=int, required=True)
@@ -137,8 +139,9 @@ if __name__ == '__main__':
 
         print(f"Collecting dataset with model {model_path} on {env.num_objects} objects")
         eval_stat_dict = model.collect_dataset(store_episode_callback, num_episodes=num_episodes,
-                                               epsilon_initial=args.epsilon_initial,
-                                               action_noise_sigma_initial=args.action_noise_sigma_initial)
+                                               epsilon_initial=args.epsilon_initial, epsilon_final=args.epsilon_final,
+                                               action_noise_sigma_initial=args.action_noise_sigma_initial,
+                                               action_noise_sigma_final=args.action_noise_sigma_final)
 
         print(eval_stat_dict)
         for i in tqdm(range(len(futures))):
